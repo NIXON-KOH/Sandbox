@@ -1,0 +1,14 @@
+{
+    "sample": "snail.sh",
+    "Metadata (SHA256)": "fb49b69c5357706c483988c4ed3771e1214977c0131d2d7b0aea3fe0dec85574",
+    "image": "ubuntu-sandbox:latest",
+    "detonation duration": 5,
+    "started": "2026-08-22T02:06:12.606959+00:00",
+    "status": "completed",
+    "container_id": "95f382718123917fbd648a8e42332cfd4b4cb9eda6b9d1a32a77a4eecd29d2f2",
+    "duration": 5.334,
+    "exit_code": 6,
+    "finished": "2026-08-22T02:06:17.940989+00:00",
+    "strace_log": "trace.log",
+    "Directory (SHA256)": "598d948643531c8bec1209b507a95bbf746e2fd735e001c11679b183e10158a8"
+}
