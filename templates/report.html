@@ -1,0 +1,1119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sandbox {{ active_report['report']['sample'] if active_report else "" }}</title>
+    <style>
+        /* ... (all the existing CSS, unchanged) ... */
+        :root {
+            --bg: #111111;
+            --sidebar: #151515;
+            --panel: #1a1a1a;
+            --panel-hover: #222222;
+            --terminal: #0c0c0c;
+            --border: #2a2a2a;
+            --border-light: #383838;
+            --text: #e7e5e2;
+            --text-secondary: #aaa7a2;
+            --text-muted: #6f6c68;
+            --accent: #df9b3d;
+            --accent-dim: rgba(218, 156, 71, 0.20);
+            --green: #7d9560;
+            --green-dim: rgba(125, 149, 96, 0.11);
+            --yellow: #c99a3a;
+            --yellow-dim: rgba(201, 154, 58, 0.11);
+            --red: #a34b4b;
+            --red-dim: rgba(163, 75, 75, 0.11);
+            --purple: #9a82b8;
+            --sidebar-width: 270px;
+        }
+        * { box-sizing: border-box; }
+        html, body { margin: 0; width: 100%; height: 100%; }
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            font-size: 14px;
+            overflow: hidden;
+        }
+        button, input, select { font: inherit; }
+        button, select { color: inherit; }
+        a { color: inherit; text-decoration: none; }
+        .mono { font-family: "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+
+        .app {
+            display: flex;
+            width: 100%;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .sidebar {
+            width: var(--sidebar-width);
+            min-width: var(--sidebar-width);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background: var(--sidebar);
+            border-right: 1px solid var(--border);
+        }
+        .sidebar-header {
+            height: 64px;
+            min-height: 64px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 18px;
+            border-bottom: 1px solid var(--border);
+        }
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .brand-mark {
+            width: 28px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid #7a4a15;
+            background: var(--accent-dim);
+            color: var(--accent);
+            font-size: 13px;
+            font-weight: 700;
+        }
+        .brand-text { display: flex; flex-direction: column; gap: 1px; }
+        .brand-title { color: var(--text); font-size: 13px; font-weight: 700; letter-spacing: 0.03em; }
+        .brand-subtitle { color: var(--text-muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; }
+
+        .upload-button {
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid var(--border-light);
+            background: var(--panel);
+            color: var(--accent);
+            cursor: pointer;
+            font-size: 20px;
+            font-weight: 700;
+            transition: background 120ms ease, border-color 120ms ease;
+        }
+        .upload-button:hover { background: var(--panel-hover); border-color: var(--accent); }
+        .upload-button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .history-header {
+            padding: 18px 18px 9px;
+            color: var(--text-muted);
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+        }
+        .report-list {
+            flex: 1;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: var(--border-light) transparent;
+        }
+        .report-item {
+            position: relative;
+            display: block;
+            padding: 12px 16px 12px 18px;
+            border-bottom: 1px solid rgba(46, 36, 29, 0.65);
+            transition: background 120ms ease, border-color 120ms ease;
+        }
+        .report-item:hover { background: var(--panel-hover); }
+        .report-item.active { background: var(--accent-dim); }
+        .report-item.active::before {
+            content: "";
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: var(--accent);
+        }
+        .sample-name {
+            display: block;
+            overflow: hidden;
+            color: var(--text);
+            font-size: 13px;
+            font-weight: 600;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .report-meta {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 5px;
+            color: var(--text-muted);
+            font-size: 10px;
+        }
+        .report-status { text-transform: uppercase; letter-spacing: 0.05em; }
+        .report-status.completed { color: var(--green); }
+        .report-status.timeout { color: var(--yellow); }
+        .report-status.failed { color: var(--red); }
+
+        .workspace {
+            flex: 1;
+            min-width: 0;
+            height: 100vh;
+            overflow-y: auto;
+            overflow-x: hidden;
+            scrollbar-width: thin;
+            scrollbar-color: var(--border-light) transparent;
+        }
+        .topbar {
+            position: sticky;
+            top: 0;
+            z-index: 20;
+            min-height: 64px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 24px;
+            background: rgba(13, 10, 7, 0.94);
+            border-bottom: 1px solid var(--border);
+            backdrop-filter: blur(12px);
+        }
+        .header-left { min-width: 0; }
+        .sample-title {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            min-width: 0;
+        }
+        .sample-title h1 {
+            margin: 0;
+            overflow: hidden;
+            font-size: 16px;
+            font-weight: 650;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .sample-icon { color: var(--accent); font-size: 13px; }
+        .container-id { margin-top: 4px; color: var(--text-muted); font-size: 10px; }
+
+        .status {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            padding: 5px 9px;
+            border: 1px solid var(--border-light);
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.07em;
+            text-transform: uppercase;
+        }
+        .status-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+        .status.completed { color: var(--green); background: var(--green-dim); }
+        .status.timeout { color: var(--yellow); background: var(--yellow-dim); }
+        .status.failed { color: var(--red); background: var(--red-dim); }
+
+        .content {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 22px 24px 60px;
+        }
+        .metadata {
+            display: grid;
+            grid-template-columns: minmax(220px, 2fr) repeat(4, minmax(110px, 1fr));
+            border: 1px solid var(--border);
+            background: var(--panel);
+            margin-bottom: 18px;
+        }
+        .metadata-item {
+            min-width: 0;
+            padding: 12px 14px;
+            border-right: 1px solid var(--border);
+        }
+        .metadata-item:last-child { border-right: 0; }
+        .metadata-label {
+            display: block;
+            margin-bottom: 5px;
+            color: var(--text-muted);
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+        }
+        .metadata-value {
+            overflow: hidden;
+            color: var(--text);
+            font-size: 12px;
+            font-weight: 600;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .hash { color: var(--accent); }
+
+        .section {
+            margin-bottom: 18px;
+            border: 1px solid var(--border);
+            background: var(--panel);
+        }
+        .section-header {
+            min-height: 46px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 14px;
+            border-bottom: 1px solid var(--border);
+        }
+        .section-title {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+        }
+        .section-title h2 {
+            margin: 0;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+        .section-icon { color: var(--accent); font-size: 11px; }
+        .section-meta { color: var(--text-muted); font-size: 10px; }
+
+        .process-workspace {
+            display: grid;
+            grid-template-columns: 320px minmax(0, 1fr);
+            min-height: 390px;
+        }
+        .process-panel { border-right: 1px solid var(--border); }
+        .process-list { max-height: 390px; overflow-y: auto; }
+        .process-row {
+            position: relative;
+            display: flex;
+            align-items: center;
+            width: 100%;
+            padding: 9px 12px;
+            border: 0;
+            border-bottom: 1px solid rgba(46, 36, 29, 0.6);
+            background: transparent;
+            color: var(--text);
+            cursor: pointer;
+            text-align: left;
+            transition: background 100ms ease;
+        }
+        .process-row:hover { background: var(--panel-hover); }
+        .process-row.active { background: var(--accent-dim); }
+        .process-row.active::before {
+            content: "";
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: var(--accent);
+        }
+        .process-indent { display: inline-block; width: 14px; }
+        .process-expand {
+            flex: 0 0 18px;
+            cursor: pointer;
+            text-align: center;
+            user-select: none;
+            color: var(--text-muted);
+            font-size: 10px;
+        }
+        .process-info { min-width: 0; flex: 1; }
+        .process-command {
+            overflow: hidden;
+            font-size: 12px;
+            font-weight: 600;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .process-pid {
+            margin-top: 2px;
+            color: var(--text-muted);
+            font-family: "JetBrains Mono", Consolas, monospace;
+            font-size: 10px;
+        }
+        .process-count {
+            min-width: 40px;
+            color: var(--text-muted);
+            font-family: "JetBrains Mono", Consolas, monospace;
+            font-size: 9px;
+            text-align: right;
+        }
+        .tree-children {
+            margin-left: 12px;
+            padding-left: 6px;
+            border-left: 1px dashed var(--border);
+        }
+        .tree-children.collapsed { display: none; }
+
+        .process-detail { min-width: 0; padding: 16px; }
+        .detail-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            padding-bottom: 14px;
+            border-bottom: 1px solid var(--border);
+        }
+        .detail-command {
+            margin: 0;
+            font-family: "JetBrains Mono", Consolas, monospace;
+            font-size: 15px;
+            font-weight: 600;
+        }
+        .detail-pid {
+            margin-top: 4px;
+            color: var(--text-muted);
+            font-family: "JetBrains Mono", Consolas, monospace;
+            font-size: 10px;
+        }
+        .detail-stat-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            margin-top: 14px;
+            border: 1px solid var(--border);
+        }
+        .detail-stat {
+            padding: 10px 12px;
+            border-right: 1px solid var(--border);
+        }
+        .detail-stat:last-child { border-right: 0; }
+        .detail-stat-label {
+            display: block;
+            color: var(--text-muted);
+            font-size: 9px;
+            text-transform: uppercase;
+        }
+        .detail-stat-value {
+            display: block;
+            margin-top: 4px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+        .syscall-breakdown { margin-top: 16px; }
+        .breakdown-title {
+            margin-bottom: 8px;
+            color: var(--text-muted);
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+        }
+        .syscall-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+            gap: 1px;
+            background: var(--border);
+            border: 1px solid var(--border);
+        }
+        .syscall-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 7px 9px;
+            background: var(--panel);
+            font-family: "JetBrains Mono", Consolas, monospace;
+            font-size: 10px;
+        }
+        .syscall-name { color: var(--text-secondary); }
+        .syscall-count { color: var(--accent); }
+
+        .trace-toolbar {
+            display: flex;
+            gap: 8px;
+            padding: 10px;
+            border-bottom: 1px solid var(--border);
+            background: #120e0a;
+        }
+        .trace-search {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            border: 1px solid var(--border-light);
+            background: var(--terminal);
+        }
+        .trace-search-icon { padding-left: 10px; color: var(--text-muted); }
+        .trace-search input {
+            width: 100%;
+            padding: 8px 10px;
+            border: 0;
+            outline: 0;
+            background: transparent;
+            color: var(--text);
+            font-family: "JetBrains Mono", Consolas, monospace;
+            font-size: 11px;
+        }
+        .trace-search input::placeholder { color: var(--text-muted); }
+        .trace-filter {
+            min-width: 140px;
+            padding: 0 9px;
+            border: 1px solid var(--border-light);
+            outline: none;
+            background: var(--terminal);
+            color: var(--text-secondary);
+            font-size: 10px;
+        }
+        .trace-container {
+            height: 420px;
+            overflow: auto;
+            background: var(--terminal);
+            scrollbar-width: thin;
+            scrollbar-color: var(--border-light) transparent;
+        }
+        .trace-line {
+            display: grid;
+            grid-template-columns: 115px 55px 100px minmax(0, 1fr);
+            padding: 3px 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.015);
+            color: #b8a99a;
+            font-family: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+            font-size: 10px;
+            white-space: pre;
+        }
+        .trace-line:hover { background: #18120d; }
+        .trace-time { color: #7a6a5a; }
+        .trace-pid { color: var(--purple); }
+        .trace-syscall { color: var(--accent); }
+        .trace-body {
+            overflow: hidden;
+            color: #b8a99a;
+            text-overflow: ellipsis;
+        }
+        .trace-empty {
+            padding: 40px;
+            color: var(--text-muted);
+            font-family: "JetBrains Mono", Consolas, monospace;
+            font-size: 11px;
+            text-align: center;
+        }
+
+        .evidence-grid {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+            gap: 18px;
+        }
+        .table-wrapper { overflow: auto; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 11px;
+        }
+        th {
+            padding: 9px 12px;
+            border-bottom: 1px solid var(--border);
+            background: #120e0a;
+            color: var(--text-muted);
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-align: left;
+            text-transform: uppercase;
+        }
+        td {
+            padding: 9px 12px;
+            border-bottom: 1px solid rgba(46, 36, 29, 0.6);
+            color: var(--text-secondary);
+        }
+        tr:hover td { background: var(--panel-hover); }
+        .path {
+            color: var(--text);
+            font-family: "JetBrains Mono", Consolas, monospace;
+            font-size: 10px;
+        }
+
+        .change {
+            display: inline-block;
+            padding: 3px 6px;
+            font-size: 8px;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+        .change.added { color: var(--green); background: var(--green-dim); }
+        .change.modified { color: var(--yellow); background: var(--yellow-dim); }
+        .change.deleted { color: var(--red); background: var(--red-dim); }
+
+        details.raw-evidence { border-top: 1px solid var(--border); }
+        details.raw-evidence summary {
+            padding: 11px 14px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 10px;
+            font-weight: 600;
+            list-style: none;
+        }
+        details.raw-evidence summary::-webkit-details-marker { display: none; }
+        details.raw-evidence summary::before {
+            content: "▸";
+            margin-right: 8px;
+            color: var(--text-muted);
+        }
+        details.raw-evidence[open] summary::before { content: "▾"; }
+        .raw-log {
+            max-height: 350px;
+            margin: 0;
+            padding: 14px;
+            overflow: auto;
+            border-top: 1px solid var(--border);
+            background: var(--terminal);
+            color: #8a7b6b;
+            font-family: "JetBrains Mono", Consolas, monospace;
+            font-size: 10px;
+            line-height: 1.55;
+            white-space: pre;
+        }
+
+        .empty {
+            padding: 40px 20px;
+            color: var(--text-muted);
+            text-align: center;
+        }
+
+        @media (max-width: 1100px) {
+            .metadata {
+                grid-template-columns: repeat(3, 1fr);
+            }
+            .metadata-item:nth-child(3) { border-right: 0; }
+            .metadata-item:first-child {
+                grid-column: span 3;
+                border-right: 0;
+                border-bottom: 1px solid var(--border);
+            }
+            .process-workspace { grid-template-columns: 260px minmax(0, 1fr); }
+        }
+        @media (max-width: 800px) {
+            body { overflow: auto; }
+            .app { height: auto; min-height: 100vh; }
+            .sidebar { width: 220px; min-width: 220px; }
+            .workspace { height: auto; min-height: 100vh; }
+            .process-workspace { grid-template-columns: 1fr; }
+            .process-panel { border-right: 0; border-bottom: 1px solid var(--border); }
+            .process-list { max-height: 240px; }
+            .evidence-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+<div class="app">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <div class="brand">
+                <div class="brand-mark">SA</div>
+                <div class="brand-text">
+                    <div class="brand-title">Sandbox Analysis</div>
+                    <div class="brand-subtitle">Detonation Console</div>
+                </div>
+            </div>
+            <!-- Upload button -->
+            <button class="upload-button" title="Upload sample" onclick="document.getElementById('fileInput').click()" id="uploadBtn">+</button>
+            <input type="file" id="fileInput" style="display:none" onchange="handleFileUpload(this)" />
+        </div>
+        <div class="history-header">Detonation History</div>
+        <nav class="report-list">
+            {% for report in reports %}
+                <a href="/report/{{ report.folder_name }}"
+                   class="report-item {% if active_report and active_report['report']['folder_name'] == report.folder_name %}active{% endif %}">
+                    <span class="sample-name">{{ report.sample }}</span>
+                    <span class="report-meta">
+                        <span>{{ report.started[:19] | replace('T', ' ') }}</span>
+                        <span class="report-status {{ report.status }}">{{ report.status }}</span>
+                    </span>
+                </a>
+            {% else %}
+                <div class="empty">No detonations found.</div>
+            {% endfor %}
+        </nav>
+    </aside>
+
+    <!-- Main workspace -->
+    <main class="workspace">
+        {% if active_report %}
+            <!-- Header -->
+            <header class="topbar">
+                <div class="header-left">
+                    <div class="sample-title">
+                        <span class="sample-icon">●</span>
+                        <h1>{{ active_report["report"]["sample"] }}</h1>
+                    </div>
+                    <div class="container-id mono">container: {{ active_report["report"]["container_id"] }}</div>
+                </div>
+                <div class="status {{ active_report['report']['status'] }}">
+                    <span class="status-dot"></span>
+                    {{ active_report["report"]["status"] }}
+                </div>
+            </header>
+
+            <div class="content">
+                <!-- Metadata -->
+                <section class="metadata">
+                    <div class="metadata-item">
+                        <span class="metadata-label">SHA-256</span>
+                        <span class="metadata-value hash mono">{{ active_report["report"]["Metadata (SHA256)"] }}</span>
+                    </div>
+                    <div class="metadata-item">
+                        <span class="metadata-label">Duration</span>
+                        <span class="metadata-value">{{ active_report["report"]["duration"] }}s</span>
+                    </div>
+                    <div class="metadata-item">
+                        <span class="metadata-label">Exit Code</span>
+                        <span class="metadata-value">{{ active_report["report"]["exit_code"] }}</span>
+                    </div>
+                    <div class="metadata-item">
+                        <span class="metadata-label">Processes</span>
+                        <span class="metadata-value">{{ trace.process_count }}</span>
+                    </div>
+                    <div class="metadata-item">
+                        <span class="metadata-label">FS Changes</span>
+                        <span class="metadata-value">{{ diffs|length }}</span>
+                    </div>
+                </section>
+
+                <!-- Process Activity -->
+                <section class="section">
+                    <div class="section-header">
+                        <div class="section-title">
+                            <span class="section-icon">◈</span>
+                            <h2>Process Activity</h2>
+                        </div>
+                        <span class="section-meta">{{ trace.event_count }} syscalls</span>
+                    </div>
+
+                    <div class="process-workspace">
+                        <!-- Process list (tree) -->
+                        <div class="process-panel">
+                            <div class="process-list" id="processList"></div>
+                        </div>
+
+                        <!-- Process detail -->
+                        <div class="process-detail">
+                            {% if trace.processes %}
+                                {% for process in trace.processes %}
+                                    <div class="process-details" id="process-detail-{{ process.pid }}"
+                                         {% if not loop.first %}style="display:none"{% endif %}>
+                                        <div class="detail-header">
+                                            <div>
+                                                <h3 class="detail-command">{{ process.command }}</h3>
+                                                <div class="detail-pid">
+                                                    PID {{ process.pid }}
+                                                    {% if process.ppid is not none %} · Parent {{ process.ppid }}{% endif %}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="detail-stat-grid">
+                                            <div class="detail-stat">
+                                                <span class="detail-stat-label">Syscalls</span>
+                                                <span class="detail-stat-value">{{ process.syscall_count }}</span>
+                                            </div>
+                                            <div class="detail-stat">
+                                                <span class="detail-stat-label">Children</span>
+                                                <span class="detail-stat-value">{{ process.children|length }}</span>
+                                            </div>
+                                            <div class="detail-stat">
+                                                <span class="detail-stat-label">First Seen</span>
+                                                <span class="detail-stat-value mono">{{ process.first_seen }}</span>
+                                            </div>
+                                            <div class="detail-stat">
+                                                <span class="detail-stat-label">Last Seen</span>
+                                                <span class="detail-stat-value mono">{{ process.last_seen }}</span>
+                                            </div>
+                                        </div>
+                                        <div class="syscall-breakdown">
+                                            <div class="breakdown-title">Syscall Breakdown</div>
+                                            <div class="syscall-grid">
+                                                {% for syscall, count in process.syscalls.items() %}
+                                                    <div class="syscall-item">
+                                                        <span class="syscall-name">{{ syscall }}</span>
+                                                        <span class="syscall-count">{{ count }}</span>
+                                                    </div>
+                                                {% endfor %}
+                                            </div>
+                                        </div>
+                                    </div>
+                                {% endfor %}
+                            {% endif %}
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Strace -->
+                <section class="section">
+                    <div class="section-header">
+                        <div class="section-title">
+                            <span class="section-icon">&gt;_</span>
+                            <h2>System Call Trace</h2>
+                        </div>
+                        <span class="section-meta" id="traceResultCount">{{ trace.event_count }} events</span>
+                    </div>
+                    <div class="trace-toolbar">
+                        <div class="trace-search">
+                            <span class="trace-search-icon">/</span>
+                            <input id="traceSearch" type="search" placeholder="Search PID, syscall, path, address..." autocomplete="off">
+                        </div>
+                        <select id="traceFilter" class="trace-filter">
+                            <option value="all">All events</option>
+                            <option value="file">Filesystem</option>
+                            <option value="network">Network</option>
+                            <option value="process">Process</option>
+                        </select>
+                    </div>
+                    <div class="trace-container" id="traceContainer">
+                        {% if trace.events %}
+                            {% for event in trace.events %}
+                                <div class="trace-line"
+                                     data-pid="{{ event.pid }}"
+                                     data-syscall="{{ event.syscall }}"
+                                     data-text="{{ event.text | lower }}">
+                                    <span class="trace-time">{{ event.time }}</span>
+                                    <span class="trace-pid">{{ event.pid }}</span>
+                                    <span class="trace-syscall">{{ event.syscall }}</span>
+                                    <span class="trace-body">{{ event.text }}</span>
+                                </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="trace-empty">No strace execution log found.</div>
+                        {% endif %}
+                    </div>
+                </section>
+
+                <!-- Evidence -->
+                <div class="evidence-grid">
+                    <!-- Filesystem -->
+                    <section class="section">
+                        <div class="section-header">
+                            <div class="section-title">
+                                <span class="section-icon">▧</span>
+                                <h2>Filesystem Activity</h2>
+                            </div>
+                            <span class="section-meta">{{ diffs|length }} changes</span>
+                        </div>
+                        {% if diffs %}
+                            <div class="table-wrapper">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Type</th>
+                                            <th>Path</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for item in diffs %}
+                                            <tr>
+                                                <td><span class="change {{ item.kind }}">{{ item.kind }}</span></td>
+                                                <td class="path">{{ item.path }}</td>
+                                            </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        {% else %}
+                            <div class="empty">No filesystem modifications detected.</div>
+                        {% endif %}
+                    </section>
+
+                    <!-- Network -->
+                    <section class="section">
+                        <div class="section-header">
+                            <div class="section-title">
+                                <span class="section-icon">⇄</span>
+                                <h2>Network Activity</h2>
+                            </div>
+                            <span class="section-meta">{{ network_summary.connections }} events</span>
+                        </div>
+                        <div class="table-wrapper">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Metric</th>
+                                        <th>Value</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>Gateway log lines</td>
+                                        <td>{{ network_summary.line_count }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Detected network events</td>
+                                        <td>{{ network_summary.connections }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <details class="raw-evidence">
+                            <summary>Raw FakeNet gateway output</summary>
+                            <pre class="raw-log">{{ net_logs }}</pre>
+                        </details>
+                    </section>
+                </div>
+
+                <!-- Raw strace -->
+                <section class="section">
+                    <details class="raw-evidence">
+                        <summary>Raw strace evidence</summary>
+                        <pre class="raw-log">{{ trace_logs }}</pre>
+                    </details>
+                </section>
+            </div>
+        {% else %}
+            <div class="empty" style="height:100vh; display:flex; align-items:center; justify-content:center;">
+                No sandbox reports available.
+            </div>
+        {% endif %}
+    </main>
+</div>
+
+<script>
+    // ---- Upload handler ----
+    function handleFileUpload(input) {
+        if (!input.files || input.files.length === 0) return;
+
+        const file = input.files[0];
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const uploadBtn = document.getElementById('uploadBtn');
+        const originalText = uploadBtn.textContent;
+        uploadBtn.textContent = '↺';
+        uploadBtn.disabled = true;
+
+        fetch('/upload', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => {
+            if (response.redirected) {
+                window.location.href = response.url;
+            } else {
+                return response.text().then(text => { throw new Error(text || 'Upload failed'); });
+            }
+        })
+        .catch(err => {
+            alert('Upload failed: ' + err.message);
+            uploadBtn.textContent = originalText;
+            uploadBtn.disabled = false;
+        })
+        .finally(() => {
+            input.value = '';
+        });
+    }
+
+    // ---- Existing process tree and trace filtering code ----
+    const processData = {{ trace.processes | tojson }};
+
+    let activePid = null;
+    let activeDescendants = new Set();
+
+    function escapeHtml(value) {
+        return String(value)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+    function buildProcessTree(processes) {
+        const byPid = new Map();
+        processes.forEach(process => {
+            byPid.set(process.pid, {
+                ...process,
+                children: []
+            });
+        });
+
+        const roots = [];
+        processes.forEach(process => {
+            const node = byPid.get(process.pid);
+            if (process.ppid && byPid.has(process.ppid)) {
+                byPid.get(process.ppid).children.push(node);
+            } else {
+                roots.push(node);
+            }
+        });
+
+        return roots;
+    }
+
+    function renderProcessTree(nodes, depth = 0) {
+        return nodes.map(node => {
+            const hasChildren = node.children && node.children.length > 0;
+            const isActive = node.pid === activePid;
+
+            const indent = `<span class="tree-indent" style="width:${depth * 14}px"></span>`;
+            const expandIcon = hasChildren ? "▾" : "·";
+
+            const row = `
+                <button
+                    class="process-row tree-row ${isActive ? "active" : ""}"
+                    data-pid="${node.pid}"
+                    data-ppid="${node.ppid || ""}"
+                    onclick="selectProcess(${node.pid})"
+                >
+                    ${indent}
+                    <span
+                        class="process-expand tree-toggle"
+                        data-pid="${node.pid}"
+                        onclick="event.stopPropagation(); toggleNode(${node.pid})"
+                    >
+                        ${expandIcon}
+                    </span>
+                    <span class="process-info">
+                        <span class="process-command">${escapeHtml(node.command)}</span>
+                        <span class="process-pid">
+                            PID ${node.pid}
+                            ${node.ppid ? ` · PPID ${node.ppid}` : ""}
+                        </span>
+                    </span>
+                    <span class="process-count">${node.syscall_count}</span>
+                </button>
+            `;
+
+            const childrenHtml = hasChildren
+                ? `<div class="tree-children" id="children-${node.pid}">
+                       ${renderProcessTree(node.children, depth + 1)}
+                   </div>`
+                : "";
+
+            return `
+                <div class="tree-node">
+                    ${row}
+                    ${childrenHtml}
+                </div>
+            `;
+        }).join("");
+    }
+
+    function renderProcessPanel() {
+        const container = document.getElementById("processList");
+        if (!container || !processData.length) {
+            container.innerHTML = `<div class="empty">No process information available.</div>`;
+            return;
+        }
+        const tree = buildProcessTree(processData);
+        container.innerHTML = renderProcessTree(tree);
+    }
+
+    function toggleNode(pid) {
+        const container = document.getElementById(`children-${pid}`);
+        if (!container) return;
+
+        container.classList.toggle("collapsed");
+
+        const toggle = document.querySelector(`.tree-toggle[data-pid="${pid}"]`);
+        if (toggle) {
+            toggle.textContent = container.classList.contains("collapsed") ? "▸" : "▾";
+        }
+    }
+
+    function getDescendantPids(pid, nodes) {
+        const result = new Set();
+
+        function walk(nodeList) {
+            nodeList.forEach(node => {
+                if (node.pid === pid) {
+                    node.children.forEach(child => {
+                        result.add(child.pid);
+                        walk([child]);
+                    });
+                } else {
+                    walk(node.children);
+                }
+            });
+        }
+
+        walk(nodes);
+        return result;
+    }
+
+    renderProcessPanel();
+
+    if (processData.length) {
+        activePid = processData[0].pid;
+        const tree = buildProcessTree(processData);
+        activeDescendants = getDescendantPids(activePid, tree);
+        document.querySelectorAll(".process-row").forEach(row => {
+            row.classList.toggle("active", row.dataset.pid === String(activePid));
+        });
+    }
+
+    function selectProcess(pid) {
+        activePid = pid;
+
+        const tree = buildProcessTree(processData);
+        activeDescendants = getDescendantPids(pid, tree);
+
+        document.querySelectorAll(".process-row").forEach(row => {
+            row.classList.toggle("active", row.dataset.pid === String(pid));
+        });
+
+        document.querySelectorAll(".process-details").forEach(detail => {
+            detail.style.display = "none";
+        });
+        const selected = document.getElementById(`process-detail-${pid}`);
+        if (selected) {
+            selected.style.display = "block";
+        }
+
+        filterTrace();
+    }
+
+    const searchInput = document.getElementById("traceSearch");
+    const traceFilter = document.getElementById("traceFilter");
+    const traceResultCount = document.getElementById("traceResultCount");
+
+    function filterTrace() {
+        const query = searchInput.value.trim().toLowerCase();
+        const filter = traceFilter.value;
+        const selectedPid = activePid;
+
+        const rows = document.querySelectorAll(".trace-line");
+        let visible = 0;
+
+        rows.forEach(row => {
+            const pid = row.dataset.pid;
+            const syscall = row.dataset.syscall;
+            const text = row.dataset.text;
+
+            let matchesSearch = !query || text.includes(query) || pid.includes(query) || syscall.includes(query);
+            let matchesProcess = !selectedPid || Number(pid) === Number(selectedPid) || activeDescendants.has(Number(pid));
+            let matchesFilter = true;
+
+            if (filter === "file") {
+                const fileSyscalls = ["open", "openat", "read", "write", "close", "stat", "lstat", "fstat", "unlink", "rename", "mkdir", "rmdir", "chmod", "chown"];
+                matchesFilter = fileSyscalls.includes(syscall);
+            } else if (filter === "network") {
+                const networkSyscalls = ["socket", "connect", "accept", "accept4", "sendto", "sendmsg", "recvfrom", "recvmsg", "bind", "listen", "getsockname", "getpeername"];
+                matchesFilter = networkSyscalls.includes(syscall);
+            } else if (filter === "process") {
+                const processSyscalls = ["execve", "execveat", "clone", "clone3", "fork", "vfork", "wait4", "waitpid", "exit", "exit_group"];
+                matchesFilter = processSyscalls.includes(syscall);
+            }
+
+            const visibleRow = matchesSearch && matchesProcess && matchesFilter;
+            row.style.display = visibleRow ? "grid" : "none";
+            if (visibleRow) visible++;
+        });
+
+        traceResultCount.textContent = `${visible} / ${rows.length} events`;
+    }
+
+    searchInput.addEventListener("input", filterTrace);
+    traceFilter.addEventListener("change", filterTrace);
+
+    document.addEventListener("keydown", event => {
+        if (event.key === "/" && document.activeElement.tagName !== "INPUT") {
+            event.preventDefault();
+            searchInput.focus();
+        }
+        if (event.key === "Escape" && document.activeElement === searchInput) {
+            searchInput.value = "";
+            filterTrace();
+            searchInput.blur();
+        }
+    });
+
+    filterTrace();
+</script>
+</body>
+</html>

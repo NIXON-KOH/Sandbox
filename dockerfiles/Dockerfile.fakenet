@@ -1,0 +1,24 @@
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip \
+    libnetfilter-queue-dev \
+    iptables \
+    iproute2 \
+    net-tools \
+    && rm -rf /var/lib/apt/lists/*
+
+# Fix the OpenSSL/Cryptography mismatch by installing a compatible pyOpenSSL version first
+RUN pip3 install --no-cache-dir --break-system-packages "pyOpenSSL==24.2.1" cryptography==42.0.8
+
+
+RUN pip3 install --no-cache-dir --break-system-packages \
+    https://github.com/mandiant/flare-fakenet-ng/zipball/master \
+    pydivert dnslib dpkt pyftpdlib netifaces jinja2 requests
+
+# Run FakeNet-NG in MultiHost mode as a gateway router
+CMD ["python3", "-m", "fakenet.fakenet", "-l", "MultiHost"]

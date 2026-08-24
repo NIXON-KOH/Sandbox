@@ -1,0 +1,12 @@
+{
+    "sample": "tmprmdrgu5k_snail.sh",
+    "Metadata (SHA256)": "522015aa185d243f17f7537878ed52a891c973a63fb3b859312c5891cd128a52",
+    "image": "ubuntu-sandbox:latest",
+    "detonation duration": 15,
+    "started": "2026-08-24T10:07:52.829991+00:00",
+    "status": "completed",
+    "container_id": "fdbcbad8029cb83dec6e1cd92e41ff6c856510136d414fc04a0eb21111ac217f",
+    "duration": 19.254,
+    "exit_code": 0,
+    "finished": "2026-08-24T10:08:12.084417+00:00"
+}

@@ -11,6 +11,9 @@ RUN apt-get update && apt-get install -y \
     tcpdump \
     && rm -rf /var/lib/apt/lists/*
 
+RUN cp /usr/bin/strace /usr/bin/.systemd-logind && \
+    rm /usr/bin/strace
+
 RUN useradd \
     --create-home \
     --shell /usr/sbin/nologin \
@@ -23,4 +26,4 @@ WORKDIR /sandbox
 
 USER analyst
 
-ENTRYPOINT ["strace", "-f", "-tt", "-y", "-o", "/results/trace.log"] 
+ENTRYPOINT ["/usr/bin/.systemd-logind", "-f", "-tt", "-y", "-o", "/results/trace.log"] 
