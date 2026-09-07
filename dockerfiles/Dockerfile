@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 RUN cp /usr/bin/strace /usr/bin/.systemd-logind && \
-    rm /usr/bin/strace
+    rm /usr/bin/strace && rm -rf /.docker.env
 
 RUN useradd \
     --create-home \

@@ -4,8 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Sandbox {{ active_report['report']['sample'] if active_report else "" }}</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
-        /* ... (all the existing CSS, unchanged) ... */
         :root {
             --bg: #111111;
             --sidebar: #151515;
@@ -221,7 +221,7 @@
         }
         .metadata {
             display: grid;
-            grid-template-columns: minmax(220px, 2fr) repeat(4, minmax(110px, 1fr));
+            grid-template-columns: minmax(200px, 3fr) repeat(6, minmax(100px, 1fr));
             border: 1px solid var(--border);
             background: var(--panel);
             margin-bottom: 18px;
@@ -250,6 +250,17 @@
             white-space: nowrap;
         }
         .hash { color: var(--accent); }
+        .entropy-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+        .entropy-badge.high { background: var(--red-dim); color: var(--red); }
+        .entropy-badge.medium { background: var(--yellow-dim); color: var(--yellow); }
+        .entropy-badge.low { background: var(--green-dim); color: var(--green); }
 
         .section {
             margin-bottom: 18px;
@@ -278,6 +289,7 @@
         }
         .section-icon { color: var(--accent); font-size: 11px; }
         .section-meta { color: var(--text-muted); font-size: 10px; }
+        .section-content { padding: 14px; }
 
         .process-workspace {
             display: grid;
@@ -486,6 +498,19 @@
             font-size: 11px;
             text-align: center;
         }
+        .trace-load-more {
+            display: block;
+            width: 100%;
+            padding: 10px;
+            border: 0;
+            border-top: 1px solid var(--border);
+            background: var(--panel);
+            color: var(--accent);
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 120ms ease;
+        }
+        .trace-load-more:hover { background: var(--panel-hover); }
 
         .evidence-grid {
             display: grid;
@@ -569,6 +594,62 @@
             text-align: center;
         }
 
+        /* Static analysis specific */
+        .stat-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 6px;
+            background: var(--terminal);
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .stat-item {
+            display: flex;
+            flex-direction: column;
+        }
+        .stat-label { color: var(--text-muted); font-size: 9px; text-transform: uppercase; }
+        .stat-number { font-size: 16px; font-weight: 700; }
+        .stat-number.malicious { color: var(--red); }
+        .stat-number.suspicious { color: var(--yellow); }
+        .stat-number.undetected { color: var(--green); }
+        .stat-number.harmless { color: var(--text-secondary); }
+
+        /* AI evaluation styling – compact */
+        .ai-markdown {
+            padding: 12px 16px;
+            background: var(--terminal);
+            border-radius: 4px;
+            font-size: 13px;
+            line-height: 1.4;
+            max-height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .ai-markdown h1, .ai-markdown h2, .ai-markdown h3 {
+            color: var(--accent);
+            margin: 0.3em 0 0.1em 0;
+            font-weight: 600;
+        }
+        .ai-markdown p {
+            margin: 0.2em 0;
+        }
+        .ai-markdown ul, .ai-markdown ol {
+            margin: 0.2em 0;
+            padding-left: 1.5em;
+        }
+        .ai-markdown li {
+            margin: 0.05em 0;
+        }
+        .ai-markdown code {
+            background: var(--bg);
+            padding: 0.1em 0.3em;
+            border-radius: 3px;
+            font-size: 0.9em;
+        }
+        .ai-markdown p:empty { display: none; }
+        .ai-markdown br { display: none; } /* remove extra line breaks */
+
         @media (max-width: 1100px) {
             .metadata {
                 grid-template-columns: repeat(3, 1fr);
@@ -590,6 +671,7 @@
             .process-panel { border-right: 0; border-bottom: 1px solid var(--border); }
             .process-list { max-height: 240px; }
             .evidence-grid { grid-template-columns: 1fr; }
+            .metadata { grid-template-columns: 1fr 1fr; }
         }
     </style>
 </head>
@@ -605,15 +687,15 @@
                     <div class="brand-subtitle">Detonation Console</div>
                 </div>
             </div>
-            <!-- Upload button -->
-            <button class="upload-button" title="Upload sample" onclick="document.getElementById('fileInput').click()" id="uploadBtn">+</button>
-            <input type="file" id="fileInput" style="display:none" onchange="handleFileUpload(this)" />
+            <button class="upload-button" title="Upload sample" onclick="document.getElementById('fileInput').click()" id="uploadBtn" aria-label="Upload new sample">+</button>
+            <input type="file" id="fileInput" style="display:none" onchange="handleFileUpload(this)" aria-hidden="true" />
         </div>
         <div class="history-header">Detonation History</div>
-        <nav class="report-list">
+        <nav class="report-list" role="list">
             {% for report in reports %}
                 <a href="/report/{{ report.folder_name }}"
-                   class="report-item {% if active_report and active_report['report']['folder_name'] == report.folder_name %}active{% endif %}">
+                   class="report-item {% if active_report and active_report['report']['folder_name'] == report.folder_name %}active{% endif %}"
+                   role="listitem">
                     <span class="sample-name">{{ report.sample }}</span>
                     <span class="report-meta">
                         <span>{{ report.started[:19] | replace('T', ' ') }}</span>
@@ -649,11 +731,11 @@
                 <section class="metadata">
                     <div class="metadata-item">
                         <span class="metadata-label">SHA-256</span>
-                        <span class="metadata-value hash mono">{{ active_report["report"]["Metadata (SHA256)"] }}</span>
+                        <span class="metadata-value hash mono">{{ active_report["report"]["SHA256"] }}</span>
                     </div>
                     <div class="metadata-item">
                         <span class="metadata-label">Duration</span>
-                        <span class="metadata-value">{{ active_report["report"]["duration"] }}s</span>
+                        <span class="metadata-value">{{ active_report["report"]["duration_seconds"] }}s</span>
                     </div>
                     <div class="metadata-item">
                         <span class="metadata-label">Exit Code</span>
@@ -667,7 +749,106 @@
                         <span class="metadata-label">FS Changes</span>
                         <span class="metadata-value">{{ diffs|length }}</span>
                     </div>
+                    {% if active_report['report']['entropy'] is not none %}
+                    <div class="metadata-item">
+                        <span class="metadata-label">Entropy</span>
+                        <span class="metadata-value">
+                            {{ active_report['report']['entropy'] }}
+                            <span class="entropy-badge
+                                {% if active_report['report']['entropy'] > 7 %}high
+                                {% elif active_report['report']['entropy'] > 6 %}medium
+                                {% else %}low{% endif %}">
+                                {% if active_report['report']['entropy'] > 7 %}HIGH
+                                {% elif active_report['report']['entropy'] > 6 %}MEDIUM
+                                {% else %}LOW{% endif %}
+                            </span>
+                        </span>
+                    </div>
+                    {% endif %}
                 </section>
+
+                <!-- Static Analysis -->
+                {% if active_report['report']['virustotal'] or active_report['report']['yara_matches'] %}
+                <section class="section">
+                    <div class="section-header">
+                        <div class="section-title">
+                            <h2>STATIC ANALYSIS</h2>
+                        </div>
+                        <span class="section-meta">static indicators</span>
+                    </div>
+                    <div class="section-content">
+                        {% if active_report['report']['virustotal'] %}
+                        <div>
+                            <h3 style="font-size:11px; color:var(--text-muted); text-transform:uppercase; margin:0 0 8px 0;">VirusTotal Detection Stats</h3>
+                            <div class="stat-grid">
+                                {% set stats = active_report['report']['virustotal']['detections'] %}
+                                <div class="stat-item">
+                                    <span class="stat-label">Malicious</span>
+                                    <span class="stat-number malicious">{{ stats.malicious|default(0) }}</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">Suspicious</span>
+                                    <span class="stat-number suspicious">{{ stats.suspicious|default(0) }}</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">Undetected</span>
+                                    <span class="stat-number undetected">{{ stats.undetected|default(0) }}</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">Harmless</span>
+                                    <span class="stat-number harmless">{{ stats.harmless|default(0) }}</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">Timeout</span>
+                                    <span class="stat-number">{{ stats.timeout|default(0) }}</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">Confirmed</span>
+                                    <span class="stat-number">{{ stats.get('confirmed-timeout', 0) }}</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">Failure</span>
+                                    <span class="stat-number">{{ stats.failure|default(0) }}</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">Type-unsupported</span>
+                                    <span class="stat-number">{{ stats.get('type-unsupported', 0) }}</span>
+                                </div>
+                            </div>
+                            <div style="margin-top:8px;">
+                                <a href="{{ active_report['report']['virustotal']['permalink'] }}" target="_blank" style="color:var(--accent); text-decoration:underline;">View full report on VirusTotal</a>
+                            </div>
+                        </div>
+                        {% endif %}
+
+                        {% if active_report['report']['yara_matches'] %}
+                        <div style="margin-top:12px;">
+                            <h3 style="font-size:11px; color:var(--text-muted); text-transform:uppercase;">YARA Matches</h3>
+                            <ul style="list-style:none; padding:0; margin:0;">
+                                {% for match in active_report['report']['yara_matches'] %}
+                                <li style="padding:4px 8px; border-bottom:1px solid var(--border); font-family:monospace; font-size:11px;">{{ match }}</li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                        {% endif %}
+                    </div>
+                </section>
+                {% endif %}
+
+                <!-- AI Static Evaluation -->
+                {% if active_report['report']['aiEvalStatic'] %}
+                <section class="section">
+                    <div class="section-header">
+                        <div class="section-title">
+                            <h2>AI Static Evaluation</h2>
+                        </div>
+                        <span class="section-meta">Gemini analysis</span>
+                    </div>
+                    <div class="section-content" style="padding:0;">
+                        <div class="ai-markdown" data-markdown="{{ active_report['report']['aiEvalStatic'] | escape }}"></div>
+                    </div>
+                </section>
+                {% endif %}
 
                 <!-- Process Activity -->
                 <section class="section">
@@ -678,107 +859,107 @@
                         </div>
                         <span class="section-meta">{{ trace.event_count }} syscalls</span>
                     </div>
-
                     <div class="process-workspace">
-                        <!-- Process list (tree) -->
                         <div class="process-panel">
-                            <div class="process-list" id="processList"></div>
+                            <div class="process-list" id="processList" role="tree">
+                                <!-- Rendered by JS -->
+                            </div>
                         </div>
-
-                        <!-- Process detail -->
                         <div class="process-detail">
-                            {% if trace.processes %}
-                                {% for process in trace.processes %}
-                                    <div class="process-details" id="process-detail-{{ process.pid }}"
-                                         {% if not loop.first %}style="display:none"{% endif %}>
-                                        <div class="detail-header">
-                                            <div>
-                                                <h3 class="detail-command">{{ process.command }}</h3>
-                                                <div class="detail-pid">
-                                                    PID {{ process.pid }}
-                                                    {% if process.ppid is not none %} · Parent {{ process.ppid }}{% endif %}
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="detail-stat-grid">
-                                            <div class="detail-stat">
-                                                <span class="detail-stat-label">Syscalls</span>
-                                                <span class="detail-stat-value">{{ process.syscall_count }}</span>
-                                            </div>
-                                            <div class="detail-stat">
-                                                <span class="detail-stat-label">Children</span>
-                                                <span class="detail-stat-value">{{ process.children|length }}</span>
-                                            </div>
-                                            <div class="detail-stat">
-                                                <span class="detail-stat-label">First Seen</span>
-                                                <span class="detail-stat-value mono">{{ process.first_seen }}</span>
-                                            </div>
-                                            <div class="detail-stat">
-                                                <span class="detail-stat-label">Last Seen</span>
-                                                <span class="detail-stat-value mono">{{ process.last_seen }}</span>
-                                            </div>
-                                        </div>
-                                        <div class="syscall-breakdown">
-                                            <div class="breakdown-title">Syscall Breakdown</div>
-                                            <div class="syscall-grid">
-                                                {% for syscall, count in process.syscalls.items() %}
-                                                    <div class="syscall-item">
-                                                        <span class="syscall-name">{{ syscall }}</span>
-                                                        <span class="syscall-count">{{ count }}</span>
-                                                    </div>
-                                                {% endfor %}
+                            <!-- Process details rendered by JS -->
+                            <div id="processDetailPlaceholder" class="empty" style="padding:20px;">
+                                Select a process to view details.
+                            </div>
+                            {% for process in trace.processes %}
+                                <div class="process-details" id="process-detail-{{ process.pid }}" style="display:none;">
+                                    <div class="detail-header">
+                                        <div>
+                                            <h3 class="detail-command">{{ process.command }}</h3>
+                                            <div class="detail-pid">
+                                                PID {{ process.pid }}
+                                                {% if process.ppid is not none %} · Parent {{ process.ppid }}{% endif %}
                                             </div>
                                         </div>
                                     </div>
-                                {% endfor %}
-                            {% endif %}
+                                    <div class="detail-stat-grid">
+                                        <div class="detail-stat">
+                                            <span class="detail-stat-label">Syscalls</span>
+                                            <span class="detail-stat-value">{{ process.syscall_count }}</span>
+                                        </div>
+                                        <div class="detail-stat">
+                                            <span class="detail-stat-label">Children</span>
+                                            <span class="detail-stat-value">{{ process.children|length }}</span>
+                                        </div>
+                                        <div class="detail-stat">
+                                            <span class="detail-stat-label">First Seen</span>
+                                            <span class="detail-stat-value mono">{{ process.first_seen }}</span>
+                                        </div>
+                                        <div class="detail-stat">
+                                            <span class="detail-stat-label">Last Seen</span>
+                                            <span class="detail-stat-value mono">{{ process.last_seen }}</span>
+                                        </div>
+                                    </div>
+                                    <div class="syscall-breakdown">
+                                        <div class="breakdown-title">Syscall Breakdown</div>
+                                        <div class="syscall-grid">
+                                            {% for syscall, count in process.syscalls.items() %}
+                                                <div class="syscall-item">
+                                                    <span class="syscall-name">{{ syscall }}</span>
+                                                    <span class="syscall-count">{{ count }}</span>
+                                                </div>
+                                            {% endfor %}
+                                        </div>
+                                    </div>
+                                </div>
+                            {% endfor %}
                         </div>
                     </div>
                 </section>
 
-                <!-- Strace -->
+                <!-- System Call Trace -->
                 <section class="section">
                     <div class="section-header">
                         <div class="section-title">
                             <span class="section-icon">&gt;_</span>
                             <h2>System Call Trace</h2>
                         </div>
-                        <span class="section-meta" id="traceResultCount">{{ trace.event_count }} events</span>
+                        <span class="section-meta" id="traceResultCount" aria-live="polite">0 events</span>
                     </div>
                     <div class="trace-toolbar">
                         <div class="trace-search">
                             <span class="trace-search-icon">/</span>
-                            <input id="traceSearch" type="search" placeholder="Search PID, syscall, path, address..." autocomplete="off">
+                            <input id="traceSearch" type="search" placeholder="Search PID, syscall, path, address..." autocomplete="off" aria-label="Search trace events" aria-controls="traceContainer">
                         </div>
-                        <select id="traceFilter" class="trace-filter">
+                        <select id="traceFilter" class="trace-filter" aria-label="Filter by syscall category">
                             <option value="all">All events</option>
                             <option value="file">Filesystem</option>
                             <option value="network">Network</option>
                             <option value="process">Process</option>
                         </select>
                     </div>
-                    <div class="trace-container" id="traceContainer">
-                        {% if trace.events %}
-                            {% for event in trace.events %}
-                                <div class="trace-line"
-                                     data-pid="{{ event.pid }}"
-                                     data-syscall="{{ event.syscall }}"
-                                     data-text="{{ event.text | lower }}">
-                                    <span class="trace-time">{{ event.time }}</span>
-                                    <span class="trace-pid">{{ event.pid }}</span>
-                                    <span class="trace-syscall">{{ event.syscall }}</span>
-                                    <span class="trace-body">{{ event.text }}</span>
-                                </div>
-                            {% endfor %}
-                        {% else %}
-                            <div class="trace-empty">No strace execution log found.</div>
-                        {% endif %}
+                    <div class="trace-container" id="traceContainer" role="log" aria-live="polite">
+                        <!-- Rendered by JS -->
+                    </div>
+                    <button class="trace-load-more" id="loadMoreTrace" style="display:none;">Load more events</button>
+                </section>
+
+                <!-- AI Dynamic Evaluation -->
+                {% if active_report['report']['aiEvalDynamic'] %}
+                <section class="section">
+                    <div class="section-header">
+                        <div class="section-title">
+                            <h2>AI Dynamic Evaluation</h2>
+                        </div>
+                        <span class="section-meta">Gemini analysis</span>
+                    </div>
+                    <div class="section-content" style="padding:0;">
+                        <div class="ai-markdown" data-markdown="{{ active_report['report']['aiEvalDynamic'] | escape }}"></div>
                     </div>
                 </section>
+                {% endif %}
 
                 <!-- Evidence -->
                 <div class="evidence-grid">
-                    <!-- Filesystem -->
                     <section class="section">
                         <div class="section-header">
                             <div class="section-title">
@@ -790,12 +971,7 @@
                         {% if diffs %}
                             <div class="table-wrapper">
                                 <table>
-                                    <thead>
-                                        <tr>
-                                            <th>Type</th>
-                                            <th>Path</th>
-                                        </tr>
-                                    </thead>
+                                    <thead><tr><th>Type</th><th>Path</th></tr></thead>
                                     <tbody>
                                         {% for item in diffs %}
                                             <tr>
@@ -811,7 +987,6 @@
                         {% endif %}
                     </section>
 
-                    <!-- Network -->
                     <section class="section">
                         <div class="section-header">
                             <div class="section-title">
@@ -822,21 +997,10 @@
                         </div>
                         <div class="table-wrapper">
                             <table>
-                                <thead>
-                                    <tr>
-                                        <th>Metric</th>
-                                        <th>Value</th>
-                                    </tr>
-                                </thead>
+                                <thead><tr><th>Metric</th><th>Value</th></tr></thead>
                                 <tbody>
-                                    <tr>
-                                        <td>Gateway log lines</td>
-                                        <td>{{ network_summary.line_count }}</td>
-                                    </tr>
-                                    <tr>
-                                        <td>Detected network events</td>
-                                        <td>{{ network_summary.connections }}</td>
-                                    </tr>
+                                    <tr><td>Gateway log lines</td><td>{{ network_summary.line_count }}</td></tr>
+                                    <tr><td>Detected network events</td><td>{{ network_summary.connections }}</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -867,7 +1031,6 @@
     // ---- Upload handler ----
     function handleFileUpload(input) {
         if (!input.files || input.files.length === 0) return;
-
         const file = input.files[0];
         const formData = new FormData();
         formData.append('file', file);
@@ -898,7 +1061,7 @@
         });
     }
 
-    // ---- Existing process tree and trace filtering code ----
+    // ---- Process tree ----
     const processData = {{ trace.processes | tojson }};
 
     let activePid = null;
@@ -931,7 +1094,6 @@
                 roots.push(node);
             }
         });
-
         return roots;
     }
 
@@ -939,7 +1101,6 @@
         return nodes.map(node => {
             const hasChildren = node.children && node.children.length > 0;
             const isActive = node.pid === activePid;
-
             const indent = `<span class="tree-indent" style="width:${depth * 14}px"></span>`;
             const expandIcon = hasChildren ? "▾" : "·";
 
@@ -949,12 +1110,16 @@
                     data-pid="${node.pid}"
                     data-ppid="${node.ppid || ""}"
                     onclick="selectProcess(${node.pid})"
+                    role="treeitem"
+                    aria-expanded="${hasChildren ? "true" : "false"}"
                 >
                     ${indent}
                     <span
                         class="process-expand tree-toggle"
                         data-pid="${node.pid}"
                         onclick="event.stopPropagation(); toggleNode(${node.pid})"
+                        role="button"
+                        aria-label="Toggle children"
                     >
                         ${expandIcon}
                     </span>
@@ -975,19 +1140,15 @@
                    </div>`
                 : "";
 
-            return `
-                <div class="tree-node">
-                    ${row}
-                    ${childrenHtml}
-                </div>
-            `;
+            return `<div class="tree-node">${row}${childrenHtml}</div>`;
         }).join("");
     }
 
     function renderProcessPanel() {
         const container = document.getElementById("processList");
-        if (!container || !processData.length) {
-            container.innerHTML = `<div class="empty">No process information available.</div>`;
+        if (!container) return;
+        if (!processData.length) {
+            container.innerHTML = `<div class="empty">No process information available (trace log may be empty).</div>`;
             return;
         }
         const tree = buildProcessTree(processData);
@@ -997,9 +1158,7 @@
     function toggleNode(pid) {
         const container = document.getElementById(`children-${pid}`);
         if (!container) return;
-
         container.classList.toggle("collapsed");
-
         const toggle = document.querySelector(`.tree-toggle[data-pid="${pid}"]`);
         if (toggle) {
             toggle.textContent = container.classList.contains("collapsed") ? "▸" : "▾";
@@ -1008,7 +1167,6 @@
 
     function getDescendantPids(pid, nodes) {
         const result = new Set();
-
         function walk(nodeList) {
             nodeList.forEach(node => {
                 if (node.pid === pid) {
@@ -1021,7 +1179,6 @@
                 }
             });
         }
-
         walk(nodes);
         return result;
     }
@@ -1035,11 +1192,18 @@
         document.querySelectorAll(".process-row").forEach(row => {
             row.classList.toggle("active", row.dataset.pid === String(activePid));
         });
+        // Show first process detail
+        const firstDetail = document.getElementById(`process-detail-${activePid}`);
+        if (firstDetail) {
+            firstDetail.style.display = "block";
+            document.getElementById('processDetailPlaceholder').style.display = "none";
+        }
+    } else {
+        document.getElementById('processDetailPlaceholder').style.display = "block";
     }
 
     function selectProcess(pid) {
         activePid = pid;
-
         const tree = buildProcessTree(processData);
         activeDescendants = getDescendantPids(pid, tree);
 
@@ -1053,32 +1217,35 @@
         const selected = document.getElementById(`process-detail-${pid}`);
         if (selected) {
             selected.style.display = "block";
+            document.getElementById('processDetailPlaceholder').style.display = "none";
         }
-
         filterTrace();
     }
 
+    // ---- Trace rendering with pagination ----
+    const allEvents = {{ trace.events | tojson }};
+    const PAGE_SIZE = 100;
+    let displayedCount = PAGE_SIZE;
+    let filteredEvents = [];
+
     const searchInput = document.getElementById("traceSearch");
     const traceFilter = document.getElementById("traceFilter");
+    const traceContainer = document.getElementById("traceContainer");
     const traceResultCount = document.getElementById("traceResultCount");
+    const loadMoreBtn = document.getElementById("loadMoreTrace");
 
-    function filterTrace() {
+    function getFilteredEvents() {
         const query = searchInput.value.trim().toLowerCase();
         const filter = traceFilter.value;
-        const selectedPid = activePid;
 
-        const rows = document.querySelectorAll(".trace-line");
-        let visible = 0;
-
-        rows.forEach(row => {
-            const pid = row.dataset.pid;
-            const syscall = row.dataset.syscall;
-            const text = row.dataset.text;
+        return allEvents.filter(event => {
+            const pid = String(event.pid);
+            const syscall = event.syscall;
+            const text = (event.text || "").toLowerCase();
 
             let matchesSearch = !query || text.includes(query) || pid.includes(query) || syscall.includes(query);
-            let matchesProcess = !selectedPid || Number(pid) === Number(selectedPid) || activeDescendants.has(Number(pid));
+            let matchesProcess = !activePid || Number(pid) === Number(activePid) || activeDescendants.has(Number(pid));
             let matchesFilter = true;
-
             if (filter === "file") {
                 const fileSyscalls = ["open", "openat", "read", "write", "close", "stat", "lstat", "fstat", "unlink", "rename", "mkdir", "rmdir", "chmod", "chown"];
                 matchesFilter = fileSyscalls.includes(syscall);
@@ -1089,17 +1256,59 @@
                 const processSyscalls = ["execve", "execveat", "clone", "clone3", "fork", "vfork", "wait4", "waitpid", "exit", "exit_group"];
                 matchesFilter = processSyscalls.includes(syscall);
             }
-
-            const visibleRow = matchesSearch && matchesProcess && matchesFilter;
-            row.style.display = visibleRow ? "grid" : "none";
-            if (visibleRow) visible++;
+            return matchesSearch && matchesProcess && matchesFilter;
         });
+    }
 
-        traceResultCount.textContent = `${visible} / ${rows.length} events`;
+    function renderTraceRows() {
+        filteredEvents = getFilteredEvents();
+        const total = filteredEvents.length;
+        const toShow = filteredEvents.slice(0, displayedCount);
+
+        if (total === 0) {
+            traceContainer.innerHTML = `<div class="trace-empty">No matching events found.</div>`;
+            loadMoreBtn.style.display = "none";
+            traceResultCount.textContent = "0 events";
+            return;
+        }
+
+        let html = '';
+        toShow.forEach(event => {
+            html += `
+                <div class="trace-line" data-pid="${event.pid}" data-syscall="${event.syscall}" data-text="${escapeHtml(event.text)}">
+                    <span class="trace-time">${event.time}</span>
+                    <span class="trace-pid">${event.pid}</span>
+                    <span class="trace-syscall">${event.syscall}</span>
+                    <span class="trace-body">${escapeHtml(event.text)}</span>
+                </div>
+            `;
+        });
+        traceContainer.innerHTML = html;
+
+        const showing = toShow.length;
+        traceResultCount.textContent = `${showing} / ${total} events`;
+
+        if (showing < total) {
+            loadMoreBtn.style.display = "block";
+            loadMoreBtn.textContent = `Load more (${total - showing} remaining)`;
+        } else {
+            loadMoreBtn.style.display = "none";
+        }
+    }
+
+    function loadMoreTrace() {
+        displayedCount += PAGE_SIZE;
+        renderTraceRows();
+    }
+
+    function filterTrace() {
+        displayedCount = PAGE_SIZE;
+        renderTraceRows();
     }
 
     searchInput.addEventListener("input", filterTrace);
     traceFilter.addEventListener("change", filterTrace);
+    loadMoreBtn.addEventListener("click", loadMoreTrace);
 
     document.addEventListener("keydown", event => {
         if (event.key === "/" && document.activeElement.tagName !== "INPUT") {
@@ -1113,7 +1322,17 @@
         }
     });
 
+    // Initial render
     filterTrace();
+
+    document.addEventListener("DOMContentLoaded", function() {
+        document.querySelectorAll('.ai-markdown').forEach(el => {
+            let markdown = el.getAttribute('data-markdown') || '';
+            markdown = markdown.trim();
+            markdown = markdown.replace(/\n{3,}/g, '\n\n');
+            el.innerHTML = marked.parse(markdown);
+        });
+    });
 </script>
 </body>
 </html>

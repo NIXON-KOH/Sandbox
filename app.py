@@ -8,16 +8,11 @@ from collections import Counter, defaultdict
 from werkzeug.utils import secure_filename
 from datetime import datetime
 
-import detonate  
+from detonate import orchestrate  
 
 app = Flask(__name__)
 
 RESULT_DIR = "Results"
-
-
-# ============================================================
-# Generic helpers
-# ============================================================
 
 def read_json(path, default=None):
     """Safely read a JSON file."""
@@ -29,7 +24,6 @@ def read_json(path, default=None):
     except (OSError, json.JSONDecodeError):
         return default
 
-
 def read_text(path, default=""):
     """Safely read a text file."""
     if not os.path.isfile(path):
@@ -39,11 +33,6 @@ def read_text(path, default=""):
             return f.read()
     except OSError:
         return default
-
-
-# ============================================================
-# Report discovery
-# ============================================================
 
 def get_all_reports():
     reports = []
@@ -61,10 +50,6 @@ def get_all_reports():
         reports.append(data)
     return reports
 
-
-# ============================================================
-# Strace parsing
-# ============================================================
 TRACE_LINE_RE = re.compile(
     r"^(?P<pid>\d+)"          # PID
     r"\s+"
@@ -76,7 +61,6 @@ TRACE_LINE_RE = re.compile(
 SYSCALL_RE = re.compile(r"^(?P<syscall>[a-zA-Z_][a-zA-Z0-9_]*)\(")
 EXECVE_RE = re.compile(r"execve\(\"(?P<path>[^\"]+)\"")
 CHILD_RE = re.compile(r"^(?:clone|clone3|fork|vfork)\(.*\)\s+=\s+(?P<child>\d+)")
-
 
 def parse_trace(trace_text):
     processes = {}
@@ -161,11 +145,6 @@ def parse_trace(trace_text):
         "roots": roots,
     }
 
-
-# ============================================================
-# Filesystem diff processing
-# ============================================================
-
 def process_diffs(diffs):
     kind_names = {0: "modified", 1: "added", 2: "deleted"}
     processed = []
@@ -177,11 +156,6 @@ def process_diffs(diffs):
         processed.append({"path": path, "kind": kind_names.get(kind, str(kind))})
     return processed
 
-
-# ============================================================
-# Network log statistics
-# ============================================================
-
 def summarise_network_log(net_logs):
     if not net_logs:
         return {"line_count": 0, "connections": 0}
@@ -189,11 +163,6 @@ def summarise_network_log(net_logs):
     connection_keywords = ("CONNECT", "GET ", "POST ", "PUT ", "DNS", "UDP", "TCP", "connection", "connect")
     connections = sum(1 for line in lines if any(kw in line for kw in connection_keywords))
     return {"line_count": len(lines), "connections": connections}
-
-
-# ============================================================
-# Report loading
-# ============================================================
 
 def load_report(folder_name):
     target_dir = os.path.join(RESULT_DIR, folder_name)
@@ -218,7 +187,7 @@ def load_report(folder_name):
     net_logs = read_text(net_path, "No network activity logged.")
     network_summary = summarise_network_log(net_logs)
 
-    trace_path = os.path.join(target_dir, "trace.log")
+    trace_path = os.path.join(target_dir, "trace.txt")
     trace_logs = read_text(trace_path, "")
     trace = parse_trace(trace_logs)
 
@@ -230,12 +199,6 @@ def load_report(folder_name):
         "trace_logs": trace_logs,
         "trace": trace,
     }
-
-
-
-# ============================================================
-# Routes
-# ============================================================
 
 @app.route("/")
 def index():
@@ -253,8 +216,7 @@ def index():
         )
     folder_name = reports[0]["folder_name"]
     data = load_report(folder_name)
-    return render_template("report.html", reports=reports, active_report=None, **data)
-
+    return render_template("report.html", reports=reports, active_report=data, **data)
 
 @app.route("/report/<folder_name>")
 def view_report(folder_name):
@@ -263,7 +225,6 @@ def view_report(folder_name):
         abort(404)
     data = load_report(folder_name)
     return render_template("report.html", reports=reports, active_report=data, **data)
-
 
 @app.route("/upload", methods=["POST"])
 def upload_sample():
@@ -277,8 +238,23 @@ def upload_sample():
     with tempfile.NamedTemporaryFile(delete=False, suffix="_" + filename) as tmp:
         file.save(tmp.name)
         tmp_path = tmp.name
+
     try:
-        metadata, folder_name = detonate.run_analysis(tmp_path)
+        results = orchestrate(tmp_path)
+        if not results:
+            abort(500, "Analysis produced no results.")
+
+        first_result = results[0]
+        output_dir = first_result.get("output_dir")
+        if not output_dir or not os.path.isdir(output_dir):
+            abort(500, "Analysis output directory not found.")
+
+        folder_name = os.path.basename(output_dir)
+
+        meta_path = os.path.join(output_dir, "metadata.json")
+        if not os.path.isfile(meta_path):
+            abort(500, "Metadata file missing after analysis.")
+
     except Exception as e:
         if os.path.exists(tmp_path):
             os.unlink(tmp_path)
@@ -288,7 +264,6 @@ def upload_sample():
         os.unlink(tmp_path)
 
     return redirect(url_for("view_report", folder_name=folder_name))
-
 
 if __name__ == "__main__":
     app.run(debug=True, host="127.0.0.1", port=5000)

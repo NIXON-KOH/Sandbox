@@ -1,0 +1,34 @@
+static:
+  enabled: True
+  virusTotal: True
+  yaraMatching: True
+  entropy: True
+  aiEval: True
+  aiModelName: "gemini-3.5-flash"
+  
+
+sandbox:
+  enabled: True
+  detonation_timeout: 15          # Duration in seconds to detonate the sample
+  network_name: "sandbox-net"     # Docker isolated bridge network name
+  default_image: "ubuntu-sandbox:latest"
+  fakenet_image: "fakenet-gateway:latest"
+  aiEval: True
+  aiModelName: "gemini-3.5-flash"
+
+container_resources:
+  mem_limit: "512m"               # Memory limit for the sandbox container
+  pids_limit: 256                 # Maximum number of processes
+  cpu_period: 100000
+  cpu_quota: 50000                # CPU throttling quota (50% of one core)
+
+runners:
+  sh: "bash"
+  py: "python3"
+
+paths:
+  result_dir: "Results"
+  fake_tracer_lib: "tools/fake_tracer/libfake_tracer.so"
+  dockerfiles_dir: "dockerfiles"
+  default_sample: "Zoo/snail.sh"
+  yara_rules: "tools/rules.yara"
