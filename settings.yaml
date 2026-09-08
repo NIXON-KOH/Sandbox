@@ -4,31 +4,35 @@ static:
   yaraMatching: True
   entropy: True
   aiEval: True
-  aiModelName: "gemini-3.5-flash"
-  
+  aiModelName: "gemini-3.6-flash" 
+  vt_upload_max_size: 33554432          # optional (default 32MB)
 
 sandbox:
   enabled: True
-  detonation_timeout: 15          # Duration in seconds to detonate the sample
-  network_name: "sandbox-net"     # Docker isolated bridge network name
+  detonation_timeout: 15             
+  network_name: "sandbox-net"
   default_image: "ubuntu-sandbox:latest"
   fakenet_image: "fakenet-gateway:latest"
   aiEval: True
-  aiModelName: "gemini-3.5-flash"
+  aiModelName: "gemini-3.6-flash"      
+  pre_delay_min: 0                      # optional 
+  pre_delay_max: 2                      # set >0 to enable stealth delay
 
 container_resources:
-  mem_limit: "512m"               # Memory limit for the sandbox container
-  pids_limit: 256                 # Maximum number of processes
+  mem_limit: "512m"
+  pids_limit: 256
   cpu_period: 100000
-  cpu_quota: 50000                # CPU throttling quota (50% of one core)
+  cpu_quota: 50000
+  cpuset_cpus: "0-1"   
 
 runners:
   sh: "bash"
   py: "python3"
+
 
 paths:
   result_dir: "Results"
   fake_tracer_lib: "tools/fake_tracer/libfake_tracer.so"
   dockerfiles_dir: "dockerfiles"
   default_sample: "Zoo/snail.sh"
-  yara_rules: "tools/rules.yara"
+  yara_rules: "tools/rules.yara"       

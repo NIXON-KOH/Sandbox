@@ -1,21 +1,22 @@
-from flask import Flask, render_template, abort, request, redirect, url_for
+from flask import Flask, render_template, abort, request, redirect, url_for, jsonify
 import os
 import json
 import re
 import tempfile
 import shutil
+import time
+import threading
 from collections import Counter, defaultdict
 from werkzeug.utils import secure_filename
 from datetime import datetime
 
-from detonate import orchestrate  
+from detonate import orchestrate, start_analysis, get_job_status, get_job_result
 
 app = Flask(__name__)
 
 RESULT_DIR = "Results"
 
 def read_json(path, default=None):
-    """Safely read a JSON file."""
     if not os.path.isfile(path):
         return default
     try:
@@ -187,7 +188,7 @@ def load_report(folder_name):
     net_logs = read_text(net_path, "No network activity logged.")
     network_summary = summarise_network_log(net_logs)
 
-    trace_path = os.path.join(target_dir, "trace.txt")
+    trace_path = os.path.join(target_dir, "trace.log")
     trace_logs = read_text(trace_path, "")
     trace = parse_trace(trace_logs)
 
@@ -228,6 +229,7 @@ def view_report(folder_name):
 
 @app.route("/upload", methods=["POST"])
 def upload_sample():
+    """Synchronous analysis: blocks until analysis completes."""
     if "file" not in request.files:
         abort(400, "No file part")
     file = request.files["file"]
@@ -240,12 +242,11 @@ def upload_sample():
         tmp_path = tmp.name
 
     try:
-        results = orchestrate(tmp_path)
-        if not results:
+        result = orchestrate(tmp_path)
+        if not result:
             abort(500, "Analysis produced no results.")
 
-        first_result = results[0]
-        output_dir = first_result.get("output_dir")
+        output_dir = result.get("output_dir")
         if not output_dir or not os.path.isdir(output_dir):
             abort(500, "Analysis output directory not found.")
 
@@ -264,6 +265,69 @@ def upload_sample():
         os.unlink(tmp_path)
 
     return redirect(url_for("view_report", folder_name=folder_name))
+
+# -------------------------------------------------------------------
+# Asynchronous endpoints 
+# -------------------------------------------------------------------
+@app.route("/upload_async", methods=["POST"])
+def upload_async():
+    """Start analysis in background; returns a job_id for polling."""
+    if "file" not in request.files:
+        abort(400, "No file part")
+    file = request.files["file"]
+    if file.filename == "":
+        abort(400, "No selected file")
+
+    filename = secure_filename(file.filename)
+
+    tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix="_" + filename)
+    try:
+        file.save(tmp_file.name)
+        tmp_path = tmp_file.name
+    except Exception:
+        tmp_file.close()
+        if os.path.exists(tmp_file.name):
+            os.unlink(tmp_file.name)
+        abort(500, "Failed to save uploaded file")
+    finally:
+        tmp_file.close()
+
+    # Start background analysis
+    job_id = start_analysis(tmp_path, wait=False)
+    if not job_id:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        abort(500, "Could not start analysis job.")
+
+    def cleanup_temp_file():
+        while True:
+            status = get_job_status(job_id)
+            if status is None or status["status"] in ("completed", "failed"):
+                if os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
+                break
+            time.sleep(2)
+
+    threading.Thread(target=cleanup_temp_file, daemon=True).start()
+
+    return jsonify({"job_id": job_id}), 202
+
+@app.route("/job/<job_id>/status")
+def job_status(job_id):
+    status = get_job_status(job_id)
+    if not status:
+        abort(404, "Job not found.")
+    return jsonify(status)
+
+@app.route("/job/<job_id>/result")
+def job_result(job_id):
+    result = get_job_result(job_id)
+    if not result:
+        abort(404, "Job not completed or not found.")
+    folder_name = os.path.basename(result.get("output_dir", ""))
+    if folder_name:
+        return redirect(url_for("view_report", folder_name=folder_name))
+    return jsonify(result)
 
 if __name__ == "__main__":
     app.run(debug=True, host="127.0.0.1", port=5000)

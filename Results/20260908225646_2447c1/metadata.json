@@ -1,0 +1,31 @@
+{
+    "sample": "tmpmw_1x6jx_snail.sh",
+    "SHA256": "2447c15f2e2a4ae2dec8247e7d9b95a72bf622357d5439dfa5413db32a0363a3",
+    "analysis_type": "combined",
+    "image": "ubuntu-sandbox:latest",
+    "detonation_duration_seconds": 15,
+    "started": "2026-09-08T14:56:46.373506+00:00",
+    "status": "completed",
+    "container_id": "97c4bc2edabd151d9f0d842c191bc24e9245036deca6f6e3174a7c703d389100",
+    "duration_seconds": 19.123,
+    "exit_code": 0,
+    "finished": "2026-09-08T14:56:54.357005+00:00",
+    "Directory_SHA256": "8e8adff774f7ca0e01c860264f1f853548aa3844c015ccedf767da1616aa4efa",
+    "virustotal": {
+        "detections": {
+            "malicious": 1,
+            "suspicious": 0,
+            "undetected": 59,
+            "harmless": 0,
+            "timeout": 0,
+            "confirmed-timeout": 0,
+            "failure": 1,
+            "type-unsupported": 14
+        },
+        "permalink": "https://www.virustotal.com/gui/file/2447c15f2e2a4ae2dec8247e7d9b95a72bf622357d5439dfa5413db32a0363a3"
+    },
+    "entropy": 5.36,
+    "yara_matches": [],
+    "aiEvalStatic": "Here is the breakdown and analysis of the provided Bash script.\n---\n### **Overview**\nThis script is designed to perform stealthy network communication while deliberately evading detection by security analysts, sandbox environments, and monitoring tools. \n---\n### **Step-by-Step Logic Breakdown**\n1. **Anti-Analysis Check (Anti-Debugging):**\n   * Reads `/proc/self/status` to check the `TracerPid` field.\n   * If `TracerPid` is not `0` (meaning a process like `strace`, `gdb`, or a security monitor is attached), the script silently exits (`exit 0`) without executing the rest of the payload.\n2. **String Obfuscation:**\n   * Decodes Base64-encoded strings to hide sensitive URLs from static text searches (`grep` or string scanners):\n     * **URL 1:** `http://malicious-command-and-control-server.com/api/v1/checkin`\n     * **URL 2:** `http://update-server-placeholder.local/download?payload=stage2`\n3. **Process Masquerading:**\n   * Uses `exec -a \"cron\"` to rename its running process to `cron`.\n   * When administrators check running processes using commands like `ps aux` or `top`, the script appears as a legitimate system daemon (`cron`) rather than a suspicious shell script.\n4. **Stealthy In-Memory Storage:**\n   * Creates a hidden folder in `/dev/shm/` (`/dev/shm/.cache_bak`).\n   * `/dev/shm` is a temporary filesystem stored in RAM, meaning files written here do not leave immediate traces on the physical hard drive and disappear upon reboot.\n   * Creates configuration files and tracks process IDs (`proc.pid`).\n5. **Network Beaconing (Command and Control):**\n   * Uses `curl` to send silent (`-s`) HTTP requests to the decoded C2 URLs.\n   * Uses a fake browser User-Agent (`Mozilla/5.0...`) to spoof legitimate user browsing traffic and avoid detection by network monitoring tools.\n6. **Cleanup:**\n   * Deletes temporary lock files (`rm -f /dev/shm/.cache_bak/update.lock`) to cover its tracks.\n---\n### **Key Suspicious Indicators & Techniques (TTPs)**\n* **Anti-Debugging / Evasion:** Checking `/proc/self/status` for `TracerPid` to detect sandbox/analysis environments.\n* **Obfuscation:** Using Base64 decoding (`base64 -d`) to conceal Command-and-Control (C2) URLs.\n* **Process Spoofing (Masquerading):** Modifying `$0` using `exec -a` to disguise itself as a legitimate service (`cron`).\n* **In-Memory File Dropping:** Using `/dev/shm` and hidden dot-folders (`.cache_bak`) to store temporary payload files in RAM to avoid disk forensic tools.\n* **Traffic Disguise:** Custom User-Agent spoofing in `curl` requests to mimic legitimate web browser traffic.",
+    "aiEvalDynamic": "Here are the suspicious indicators and malicious behaviors identified in the `strace` log:\n* **Anti-Debugging / Anti-Analysis**: \n  * The script checks `/proc/self/status` via `grep -i TracerPid` to detect if it is being monitored or traced.\n  * Loads an unusual shared library: `/lib/libfake_tracer.so`.\n* **Process Name Spoofing (Masquerading)**: \n  * Uses `execve(\"/bin/bash\", [\"cron\"], ...)` to disguise a Bash shell as a legitimate system process (`cron`).\n* **String Obfuscation**: \n  * Invokes `base64 -d` to dynamically decode hidden strings and URLs in memory at runtime.\n* **Stealthy In-Memory Persistence/Storage**: \n  * Creates a hidden directory and files in shared memory (`/dev/shm/.cache_bak/`) to evade disk-based detection (`config.conf`, `update.lock`, `proc.pid`).\n* **Command & Control (C2) / Outbound Traffic**: \n  * Uses `curl` to reach out to known suspicious endpoints (`http://malicious-command-and-control-server.com/api/v1/checkin`).\n  * Employs a spoofed Windows User-Agent string (`Mozilla/5.0 (Windows NT 10.0...`) to mask Linux traffic.\n* **Anti-Forensics / Cleanup**: \n  * Deletes temporary operational artifacts (`rm -f /dev/shm/.cache_bak/update.lock`) before exiting."
+}

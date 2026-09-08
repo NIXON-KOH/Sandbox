@@ -104,6 +104,18 @@
         }
         .upload-button:hover { background: var(--panel-hover); border-color: var(--accent); }
         .upload-button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .upload-button .spinner {
+            display: none;
+            width: 16px;
+            height: 16px;
+            border: 2px solid var(--accent);
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        .upload-button.uploading .spinner { display: inline-block; }
+        .upload-button.uploading .plus { display: none; }
+        @keyframes spin { to { transform: rotate(360deg); } }
 
         .history-header {
             padding: 18px 18px 9px;
@@ -648,7 +660,7 @@
             font-size: 0.9em;
         }
         .ai-markdown p:empty { display: none; }
-        .ai-markdown br { display: none; } /* remove extra line breaks */
+        .ai-markdown br { display: none; }
 
         @media (max-width: 1100px) {
             .metadata {
@@ -687,7 +699,10 @@
                     <div class="brand-subtitle">Detonation Console</div>
                 </div>
             </div>
-            <button class="upload-button" title="Upload sample" onclick="document.getElementById('fileInput').click()" id="uploadBtn" aria-label="Upload new sample">+</button>
+            <button class="upload-button" title="Upload sample" onclick="document.getElementById('fileInput').click()" id="uploadBtn" aria-label="Upload new sample">
+                <span class="plus">+</span>
+                <span class="spinner"></span>
+            </button>
             <input type="file" id="fileInput" style="display:none" onchange="handleFileUpload(this)" aria-hidden="true" />
         </div>
         <div class="history-header">Detonation History</div>
@@ -804,7 +819,7 @@
                                 </div>
                                 <div class="stat-item">
                                     <span class="stat-label">Confirmed</span>
-                                    <span class="stat-number">{{ stats.get('confirmed-timeout', 0) }}</span>
+                                    <span class="stat-number">{{ stats['confirmed-timeout']|default(0) }}</span>
                                 </div>
                                 <div class="stat-item">
                                     <span class="stat-label">Failure</span>
@@ -812,7 +827,7 @@
                                 </div>
                                 <div class="stat-item">
                                     <span class="stat-label">Type-unsupported</span>
-                                    <span class="stat-number">{{ stats.get('type-unsupported', 0) }}</span>
+                                    <span class="stat-number">{{ stats['type-unsupported']|default(0) }}</span>
                                 </div>
                             </div>
                             <div style="margin-top:8px;">
@@ -866,7 +881,6 @@
                             </div>
                         </div>
                         <div class="process-detail">
-                            <!-- Process details rendered by JS -->
                             <div id="processDetailPlaceholder" class="empty" style="padding:20px;">
                                 Select a process to view details.
                             </div>
@@ -1028,37 +1042,57 @@
 </div>
 
 <script>
-    // ---- Upload handler ----
-    function handleFileUpload(input) {
+    // ---- Upload handler (async version) ----
+    async function handleFileUpload(input) {
         if (!input.files || input.files.length === 0) return;
         const file = input.files[0];
         const formData = new FormData();
         formData.append('file', file);
 
         const uploadBtn = document.getElementById('uploadBtn');
-        const originalText = uploadBtn.textContent;
-        uploadBtn.textContent = '↺';
+        const plusSpan = uploadBtn.querySelector('.plus');
+        const spinnerSpan = uploadBtn.querySelector('.spinner');
+        uploadBtn.classList.add('uploading');
         uploadBtn.disabled = true;
 
-        fetch('/upload', {
-            method: 'POST',
-            body: formData
-        })
-        .then(response => {
-            if (response.redirected) {
-                window.location.href = response.url;
-            } else {
-                return response.text().then(text => { throw new Error(text || 'Upload failed'); });
+        try {
+            // 1. Start async analysis
+            const response = await fetch('/upload_async', {
+                method: 'POST',
+                body: formData
+            });
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(errorText || 'Upload failed');
             }
-        })
-        .catch(err => {
+            const data = await response.json();
+            const jobId = data.job_id;
+            if (!jobId) throw new Error('No job ID returned');
+
+            // 2. Poll for job status
+            const pollInterval = 2000; // ms
+            let statusData;
+            do {
+                await new Promise(resolve => setTimeout(resolve, pollInterval));
+                const statusResponse = await fetch(`/job/${jobId}/status`);
+                if (!statusResponse.ok) {
+                    throw new Error('Status check failed');
+                }
+                statusData = await statusResponse.json();
+                if (statusData.status === 'failed') {
+                    throw new Error(statusData.error || 'Analysis failed');
+                }
+            } while (statusData.status !== 'completed');
+
+            // 3. Redirect to result
+            window.location.href = `/job/${jobId}/result`;
+        } catch (err) {
             alert('Upload failed: ' + err.message);
-            uploadBtn.textContent = originalText;
+            uploadBtn.classList.remove('uploading');
             uploadBtn.disabled = false;
-        })
-        .finally(() => {
+        } finally {
             input.value = '';
-        });
+        }
     }
 
     // ---- Process tree ----
@@ -1192,7 +1226,6 @@
         document.querySelectorAll(".process-row").forEach(row => {
             row.classList.toggle("active", row.dataset.pid === String(activePid));
         });
-        // Show first process detail
         const firstDetail = document.getElementById(`process-detail-${activePid}`);
         if (firstDetail) {
             firstDetail.style.display = "block";
@@ -1322,9 +1355,10 @@
         }
     });
 
-    // Initial render
+    // Initial trace render
     filterTrace();
 
+    // Markdown rendering for AI evaluations
     document.addEventListener("DOMContentLoaded", function() {
         document.querySelectorAll('.ai-markdown').forEach(el => {
             let markdown = el.getAttribute('data-markdown') || '';
